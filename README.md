@@ -4,13 +4,13 @@
 
 第一次把这个小工具放到 GitHub。想直接试的话，下载下面的 ZIP，解压双击就能开。进去可以先挑张图试试「整图取色」，也可以直接点预览里的气泡、列表和输入框，慢慢调成自己喜欢的样子。浅色和深色可以各存一套。
 
-**[下载微信调色室 8.5 测试版（Windows x64）](https://github.com/starfalll521/Windows-WeChat-Theme-Studio/releases/download/v8.5-beta.1/WeChat-Theme-Studio-Windows-x64.zip)**
+**[下载微信调色室测试版-1.0（Windows x64）](https://github.com/starfalll521/Windows-WeChat-Theme-Studio/releases/download/v8.5-beta.1/-1.0.zip)**
 
 目前只适配微信 Windows x64 **4.1.15.56 的指定构建**。版本号一样也可能有不同的安装包，调色室会在应用前检查。
 
 ## 第一次打开
 
-解压上面的 ZIP，打开 `WeixinThemeStudio.exe`。请保留旁边的 `native-runtime` 目录。调色室会自动寻找微信，检查正在运行的微信、注册表和常见安装目录，也会记住之前验证过的位置。试用时需要的图标会从本机兼容版本读取。
+解压上面的 ZIP，打开 `微信调色室测试版-1.0.exe`。请保留旁边的 `native-runtime` 目录。调色室会自动寻找微信，检查正在运行的微信、注册表和常见安装目录，也会记住之前验证过的位置。试用时需要的图标会从本机兼容版本读取。
 
 如果没找到，先正常打开一次微信，再到「启动与恢复」点「重新检测微信位置」。如果还是找不到，再点「手动选择微信位置…」，选本机的 `Weixin.exe` 或 `Weixin.dll`。开始试用前，按页面提示从托盘完全退出微信。
 

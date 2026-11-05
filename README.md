@@ -6,7 +6,7 @@
 
 ## 第一次打开
 
-从 [GitHub Releases](https://github.com/starfalll521/Windows-WeChat-Theme-Studio/releases/latest) 下载 `WeChat-Theme-Studio-Windows-x64.zip`，解压后打开 `WeixinThemeStudio.exe`。请保留旁边的 `native-runtime` 目录。调色室会自动寻找微信，检查正在运行的微信、注册表和常见安装目录，也会记住之前验证过的位置。试用时需要的图标会从本机兼容版本读取。
+从 [GitHub Releases](https://github.com/starfalll521/Windows-WeChat-Theme-Studio/releases/tag/v8.5-beta.1) 下载 `WeChat-Theme-Studio-Windows-x64.zip`，解压后打开 `WeixinThemeStudio.exe`。请保留旁边的 `native-runtime` 目录。调色室会自动寻找微信，检查正在运行的微信、注册表和常见安装目录，也会记住之前验证过的位置。试用时需要的图标会从本机兼容版本读取。
 
 如果没找到，先正常打开一次微信，再到「启动与恢复」点「重新检测微信位置」。如果还是找不到，再点「手动选择微信位置…」，选本机的 `Weixin.exe` 或 `Weixin.dll`。开始试用前，按页面提示从托盘完全退出微信。
 

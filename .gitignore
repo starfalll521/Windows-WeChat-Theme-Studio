@@ -1,0 +1,9 @@
+/dist/
+/assets/
+/research/
+*.exe
+*.dll
+*.pdb
+*.zip
+*.bak
+*.log

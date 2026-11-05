@@ -1,0 +1,17 @@
+﻿using System;using System.Collections.Generic;using System.IO;using System.Text;
+internal static partial class NativeBackground{
+ public static string InkLink{get{return ReadInk("link");}set{SaveInk("link",value);}}
+ sealed class LinkTarget{public long Object,Table,Paragraph;public uint Color;public byte Flag;}
+ static void ReadLinkRegistry(IntPtr h,long image,long previous,InkPlan plan){if(previous==0)return;try{if(Encoding.ASCII.GetString(Read(h,previous+0x74000,8))!="WXLINK01")return;int n=BitConverter.ToInt32(Read(h,previous+0x74008,4),0);if(n<0||n>512)return;for(int i=0;i<n;i++)try{long a=previous+0x74010+i*40,obj=Pointer(h,a),table=Pointer(h,a+8),para=Pointer(h,a+16);if(table!=image+0x93ab1e8||Pointer(h,obj)!=table||Pointer(h,Pointer(h,obj+0x3e0))!=para||Pointer(h,para)!=image+0x98357b8)continue;plan.Links.Add(new LinkTarget{Object=obj,Table=table,Paragraph=para,Color=BitConverter.ToUInt32(Read(h,a+24,4),0),Flag=Read(h,a+28,1)[0]});}catch{}}catch{}}
+ static void RestoreLinkInk(Code c,InkPlan p,long image){foreach(var t in p.Links){c.Rcx(t.Paragraph);c.Emit(0xba);c.Emit(BitConverter.GetBytes(t.Color));c.Emit(0x41,0xb8,1,0,0,0);c.AbsCall(image+0x44e7c40);c.Rax(t.Paragraph+0x29);c.Emit(0x80,0x20,0xfb);if((t.Flag&4)!=0)c.Emit(0x80,0x08,4);}}
+ // Run on the GUI thread before XTextView's original paint. Only low-luminance blue links
+ // inside ChatTextItemView qualify; already readable incoming links keep their own style.
+ static void EmitLinkInk(Code c,long block,long getter,long setter,long image){
+  if(InkLink=="original")return;
+  c.Emit(0x83,0x7c,0x24,0x3c,1);c.Jnz("linkDone");c.Emit(0x48,0x8b,0x44,0x24,0x30,0x48,0x8b,0x80,0xe0,0x03,0,0,0x48,0x85,0xc0);c.Jz("linkDone");c.Emit(0x48,0x8b,0x08,0x48,0x85,0xc9);c.Jz("linkDone");c.Emit(0x48,0x89,0x4c,0x24,0x40);c.AbsCall(getter);c.Emit(0x89,0x44,0x24,0x48);ModeInk(c,image,"link","linkDone","linkCompare",true);c.Emit(0x8b,0x44,0x24,0x48,0x39,0xd0);c.Jz("linkDone");
+  c.Emit(0x89,0x44,0x24,0x48,0x89,0xc1,0xc1,0xe9,16,0x81,0xe1,255,0,0,0,0x89,0xc2,0xc1,0xea,8,0x81,0xe2,255,0,0,0,0x25,255,0,0,0,0x39,0xca);c.Jae("linkBlue");c.Jmp("linkDone");c.Label("linkBlue");c.Emit(0x39,0xc8);c.Jae("linkLuma");c.Jmp("linkDone");c.Label("linkLuma");c.Emit(0x01,0xd1,0x01,0xc1,0x81,0xf9,0x90,1,0,0);c.Jae("linkDone");
+  c.Emit(0x4c,0x8b,0x54,0x24,0x30,0x49,0xbb);c.Imm(block+0x74008);c.Emit(0x41,0x8b,0x0b,0x49,0xb8);c.Imm(block+0x74010);c.Emit(0x85,0xc9);c.Jz("linkRegister");c.Label("linkFind");c.Emit(0x4d,0x39,0x10);c.Jz("linkSet");c.Emit(0x49,0x83,0xc0,40,0xff,0xc9);c.Jnz("linkFind");c.Label("linkRegister");c.Emit(0x41,0x81,0x3b,0,2,0,0);c.Jae("linkDone");c.Emit(0x4d,0x89,0x10,0x49,0x8b,0x02,0x49,0x89,0x40,8,0x48,0x8b,0x44,0x24,0x40,0x49,0x89,0x40,16,0x0f,0xb6,0x40,0x29,0x41,0x88,0x40,28,0x8b,0x44,0x24,0x48,0x41,0x89,0x40,24,0x41,0xff,0x03);
+  c.Label("linkSet");ModeInk(c,image,"link","linkDone","linkApply",true);c.Emit(0x48,0x8b,0x4c,0x24,0x40);c.Emit(0x41,0xb8,1,0,0,0);c.AbsCall(setter);c.Label("linkDone");
+ }
+}
+

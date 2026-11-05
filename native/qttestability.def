@@ -1,0 +1,7 @@
+LIBRARY qttestability.dll
+
+EXPORTS
+ThemeDisable
+ThemeGetStatus
+ThemePreviewProtocol
+qt_testability_init

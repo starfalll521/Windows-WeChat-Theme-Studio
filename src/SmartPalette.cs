@@ -1,0 +1,20 @@
+using System;using System.IO;using System.Drawing;using System.Linq;using System.Collections.Generic;using System.Text;
+internal sealed class SmartColors{
+ public Theme Theme;public string Accent,Text,SecondaryText,Icons,Border,Seed,Description;public EffectSettings Effects;public int InputOpacity=0;public string[] Samples;public int Variant;public int RuntimeMode=1;public bool IncludeRuntime=true;
+}
+internal static partial class SmartPalette{
+ static double Linear(double x){return x<=.04045?x/12.92:Math.Pow((x+.055)/1.055,2.4);}
+ public static double Luminance(Color c){return .2126*Linear(c.R/255d)+.7152*Linear(c.G/255d)+.0722*Linear(c.B/255d);}
+ public static double Contrast(Color a,Color b){double x=Luminance(a),y=Luminance(b);return (Math.Max(x,y)+.05)/(Math.Min(x,y)+.05);}
+ public static string Hex(Color c){return String.Format("#{0:X2}{1:X2}{2:X2}",c.R,c.G,c.B);}
+ public static Color Hsl(double h,double s,double l){h=(h%360+360)%360;s=Math.Max(0,Math.Min(1,s));l=Math.Max(0,Math.Min(1,l));double c=(1-Math.Abs(2*l-1))*s,x=c*(1-Math.Abs(h/60%2-1)),m=l-c/2;double r=0,g=0,b=0;if(h<60){r=c;g=x;}else if(h<120){r=x;g=c;}else if(h<180){g=c;b=x;}else if(h<240){g=x;b=c;}else if(h<300){r=x;b=c;}else{r=c;b=x;}return Color.FromArgb((int)Math.Round((r+m)*255),(int)Math.Round((g+m)*255),(int)Math.Round((b+m)*255));}
+ public static Color Readable(Color c,Color background,double ratio,bool lighten){for(int i=0;i<100&&Contrast(c,background)<ratio;i++){c=Hsl(c.GetHue(),c.GetSaturation(),Math.Max(0,Math.Min(1,c.GetBrightness()+(lighten?.012:-.012))));}return c;}
+ static readonly string[] Configs={"ink-text.txt","ink-chat.txt","ink-icons.txt","ink-accent.txt","icon-effects.txt","input-glass.txt","input-border.txt","background-effects.txt","runtime-appearance.txt"};
+ static string BackupDir{get{return Path.Combine(Engine.Store,"smart-palette-backup");}}
+ public static bool HasBackup{get{return File.Exists(Path.Combine(BackupDir,"theme.json"));}}
+ public static void Backup(){Directory.CreateDirectory(BackupDir);Engine.Save(Path.Combine(BackupDir,"theme.json"),Engine.Current());foreach(string key in Configs){string from=Path.Combine(Engine.Store,key),to=Path.Combine(BackupDir,key);if(File.Exists(from))File.Copy(from,to,true);else if(File.Exists(to))File.Delete(to);}foreach(int m in new[]{0,1})foreach(string key in AppearanceProfiles.Keys.Concat(new[]{"profile.ready"})){string from=Path.Combine(AppearanceProfiles.DirectoryFor(m),key),to=Path.Combine(BackupDir,"appearance-"+(m==0?"light":"dark"),key);Directory.CreateDirectory(Path.GetDirectoryName(to));if(File.Exists(from))File.Copy(from,to,true);else if(File.Exists(to))File.Delete(to);}File.WriteAllText(Path.Combine(BackupDir,"created.txt"),DateTime.Now.ToString("s"));}
+ public static Theme BackupTheme(){return Engine.Load(Path.Combine(BackupDir,"theme.json"));}
+ public static void RestoreConfig(){AppearanceProfiles.Clear();foreach(string key in Configs){string from=Path.Combine(BackupDir,key),to=Path.Combine(Engine.Store,key);if(File.Exists(from))File.Copy(from,to,true);else if(File.Exists(to))File.Delete(to);}foreach(int m in new[]{0,1})foreach(string key in AppearanceProfiles.Keys.Concat(new[]{"profile.ready"})){string from=Path.Combine(BackupDir,"appearance-"+(m==0?"light":"dark"),key),to=Path.Combine(AppearanceProfiles.DirectoryFor(m),key);Directory.CreateDirectory(Path.GetDirectoryName(to));if(File.Exists(from))File.Copy(from,to,true);}AppearanceProfiles.EnsureProfiles();}
+ public static void Commit(SmartColors p){if(!p.IncludeRuntime)return;AppearanceProfiles.EnsureProfiles();using(AppearanceProfiles.Use(p.RuntimeMode)){NativeBackground.InkText=p.Text;NativeBackground.InkChat=p.Text;NativeBackground.InkSecondary=SecondaryFor(p);NativeBackground.InkCanvas=CanvasFor(p);NativeBackground.InkLink=LinkFor(p);NativeBackground.InkIcons=p.Icons;NativeBackground.InkAccent=p.Accent;var inputBorder=InputAppearance.Load();inputBorder.Enabled=true;inputBorder.Edge=p.RuntimeMode==0?62:72;inputBorder.Radius=10;inputBorder.BorderColor=p.Border;InputAppearance.Save(inputBorder);BackgroundEffects.Save(p.Effects.Copy());}}
+}
+

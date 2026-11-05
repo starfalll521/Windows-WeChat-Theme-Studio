@@ -1,0 +1,49 @@
+using System;using System.IO;using System.Drawing;using System.Drawing.Drawing2D;using System.Linq;using System.Collections.Generic;
+internal static partial class SmartPalette{
+ struct Oklab{public double L,A,B;public double C{get{return Math.Sqrt(A*A+B*B);}}public double Hue{get{return (Math.Atan2(B,A)*180/Math.PI+360)%360;}}}
+ static double Clamp(double n,double lo,double hi){return Math.Max(lo,Math.Min(hi,n));}
+ static Oklab ToOk(Color c){double r=Linear(c.R/255d),g=Linear(c.G/255d),b=Linear(c.B/255d),l=Math.Pow(.4122214708*r+.5363325363*g+.0514459929*b,1d/3),m=Math.Pow(.2119034982*r+.6806995451*g+.1073969566*b,1d/3),s=Math.Pow(.0883024619*r+.2817188376*g+.6299787005*b,1d/3);return new Oklab{L=.2104542553*l+.793617785*m-.0040720468*s,A=1.9779984951*l-2.428592205*m+.4505937099*s,B=.0259040371*l+.7827717662*m-.808675766*s};}
+ static double Srgb(double x){return x<=.0031308?12.92*x:1.055*Math.Pow(x,1/2.4)-.055;}
+ // Reduce chroma until the requested hue/lightness fits sRGB; never clip channels independently.
+ static Color Tone(double hue,double chroma,double light){double a=0,b=0,r=0,g=0,bl=0;for(int i=0;i<60;i++){a=chroma*Math.Cos(hue*Math.PI/180);b=chroma*Math.Sin(hue*Math.PI/180);double l=light+.3963377774*a+.2158037573*b,m=light-.1055613458*a-.0638541728*b,s=light-.0894841775*a-1.291485548*b;l=l*l*l;m=m*m*m;s=s*s*s;r=4.0767416621*l-3.3077115913*m+.2309699292*s;g=-1.2684380046*l+2.6097574011*m-.3413193965*s;bl=-.0041960863*l-.7034186147*m+1.707614701*s;if(Math.Min(r,Math.Min(g,bl))>=-.00001&&Math.Max(r,Math.Max(g,bl))<=1.00001)break;chroma*=.9;}return Color.FromArgb((int)Math.Round(Clamp(Srgb(Math.Max(0,r)),0,1)*255),(int)Math.Round(Clamp(Srgb(Math.Max(0,g)),0,1)*255),(int)Math.Round(Clamp(Srgb(Math.Max(0,bl)),0,1)*255));}
+ static Color Surface(double h,double c,double l,Color text){Color result=Tone(h,c,l);for(int i=0;i<60&&Contrast(text,result)<7;i++)result=Tone(h,c,l-=.008);return result;}
+ public static SmartColors Generate(string path,int variant){return GenerateSeed(path,variant,null);}
+ static SmartColors GenerateSeed(string path,int variant,string selectedSeed){
+  if(variant<0||variant>2)throw new ArgumentOutOfRangeException("variant");
+  var colors=new List<Color>();using(var image=Image.FromFile(path)){double scale=Math.Min(1,144d/Math.Max(image.Width,image.Height));using(var small=new Bitmap(Math.Max(1,(int)Math.Round(image.Width*scale)),Math.Max(1,(int)Math.Round(image.Height*scale)))){using(var g=Graphics.FromImage(small)){g.Clear(Color.Transparent);g.CompositingMode=CompositingMode.SourceCopy;g.InterpolationMode=InterpolationMode.HighQualityBicubic;g.DrawImage(image,0,0,small.Width,small.Height);}for(int y=0;y<small.Height;y++)for(int x=0;x<small.Width;x++){Color c=small.GetPixel(x,y);if(c.A>=200)colors.Add(c);}}}
+  if(colors.Count==0)throw new InvalidDataException("图片没有可用于取色的不透明区域。");
+  var pixels=colors.Select(ToOk).ToArray();double mean=pixels.Average(p=>p.L),bright=pixels.Count(p=>p.L>.72)/(double)pixels.Length;
+  // Hue families compete by chroma and coverage, not by the area of black shadows or skin-toned neutrals.
+  const int bins=24;var weight=new double[bins];var hueX=new double[bins];var hueY=new double[bins];var chromaSum=new double[bins];var coverage=new int[bins];
+  foreach(var p in pixels){if(p.C<.035||p.L<.19||p.L>.94)continue;int bin=(int)((p.Hue+7.5)%360/15);double w=Math.Pow(p.C,1.7)*Math.Min(1,(p.L-.12)*5);coverage[bin]++;weight[bin]+=w;hueX[bin]+=Math.Cos(p.Hue*Math.PI/180)*w;hueY[bin]+=Math.Sin(p.Hue*Math.PI/180)*w;chromaSum[bin]+=p.C*w;}
+  // Suppress tiny highlights before scoring a family; preserve broad related hues.
+  for(int i=0;i<bins;i++){int area=coverage[i]+coverage[(i+1)%bins]+coverage[(i+bins-1)%bins];double f=Clamp(area/(colors.Count*.045),0,1);f*=f;weight[i]*=f;hueX[i]*=f;hueY[i]*=f;chromaSum[i]*=f;}
+  int best=Enumerable.Range(0,bins).OrderByDescending(i=>weight[i]+.35*(weight[(i+1)%bins]+weight[(i+bins-1)%bins])).First();double sum=0,hx=0,hy=0,cs=0;
+  for(int d=-1;d<=1;d++){int i=(best+d+bins)%bins;double f=d==0?1:.35;sum+=weight[i]*f;hx+=hueX[i]*f;hy+=hueY[i]*f;cs+=chromaSum[i]*f;}
+  bool neutral=sum<.002*colors.Count;double hue=neutral?0:(Math.Atan2(hy,hx)*180/Math.PI+360)%360,chroma=neutral?0:Clamp(cs/sum,.045,.18);
+  // Swatches are actual pixel medoids from perceptual clusters, not muddy RGB averages.
+  int k=Math.Min(8,pixels.Length);var centers=new Oklab[k];centers[0]=pixels[pixels.Length/2];Func<Oklab,Oklab,double> distance=(a,b)=>(a.L-b.L)*(a.L-b.L)+(a.A-b.A)*(a.A-b.A)+(a.B-b.B)*(a.B-b.B);
+  for(int i=1;i<k;i++)centers[i]=pixels.OrderByDescending(p=>centers.Take(i).Min(c=>distance(p,c))).First();int[] counts=new int[k];
+  for(int pass=0;pass<10;pass++){Array.Clear(counts,0,k);var totals=new double[k,3];foreach(var p in pixels){int i=Enumerable.Range(0,k).OrderBy(j=>distance(p,centers[j])).First();counts[i]++;totals[i,0]+=p.L;totals[i,1]+=p.A;totals[i,2]+=p.B;}for(int i=0;i<k;i++)if(counts[i]>0)centers[i]=new Oklab{L=totals[i,0]/counts[i],A=totals[i,1]/counts[i],B=totals[i,2]/counts[i]};}
+  var swatches=Enumerable.Range(0,k).Where(i=>counts[i]>0).OrderByDescending(i=>counts[i]).Select(i=>Hex(colors[Enumerable.Range(0,pixels.Length).OrderBy(n=>distance(pixels[n],centers[i])).First()])).Distinct().Take(6).ToArray();
+  // Reserve candidates for vivid real pixels as well as area-dominant medoids.
+  var vivid=Enumerable.Range(0,bins).Where(i=>coverage[i]>=Math.Max(2,colors.Count*.008)).Select(i=>colors.Where((c,n)=>pixels[n].C>.055&&pixels[n].L>.32&&pixels[n].L<.82&&(int)((pixels[n].Hue+7.5)%360/15)==i).OrderByDescending(c=>ToOk(c).C*(1-Math.Abs(ToOk(c).L-.58))).FirstOrDefault()).Where(c=>c.A!=0).OrderByDescending(c=>ToOk(c).C).Select(Hex).Distinct().Take(3).ToArray();
+  double softHue=vivid.Length==0?hue:ToOk(ColorTranslator.FromHtml(vivid[0])).Hue;
+  var soft=colors.Where((c,n)=>pixels[n].L>.55&&pixels[n].L<.78&&pixels[n].C>.08&&pixels[n].C<.17&&Math.Abs((pixels[n].Hue-softHue+540)%360-180)<12).OrderBy(c=>{var v=ToOk(c);return Math.Abs(v.L-.65)+Math.Abs(v.C-.14);}).Take(1).Select(Hex);
+  swatches=vivid.Take(2).Concat(soft).Concat(swatches).Distinct().Take(6).ToArray();
+  if(selectedSeed!=null){var chosen=ToOk(ColorTranslator.FromHtml(selectedSeed));hue=chosen.Hue;chroma=chosen.C;neutral=chroma<.015;}
+  else if(variant==1&&!neutral){var candidates=colors.Where((c,n)=>pixels[n].C>.055&&pixels[n].L>.32&&pixels[n].L<.82&&Math.Abs((pixels[n].Hue-hue+540)%360-180)<24).OrderByDescending(c=>ToOk(c).C*(1-Math.Abs(ToOk(c).L-.58))).ToArray();if(candidates.Length>0){selectedSeed=Hex(candidates[0]);var chosen=ToOk(candidates[0]);hue=chosen.Hue;chroma=chosen.C;}}
+  double strength=variant==1?1.3:variant==2?.4:1;double tint=neutral?0:Math.Min(.025,chroma*.18)*strength;
+  Color text=Tone(hue,neutral?0:.008,.97),window=Tone(hue,tint*.55,.19),received=Surface(hue,tint,.275,text),sent=Surface(hue,Math.Min(.060,chroma*.42)*strength,.34,text),selected=Surface(hue,Math.Min(.075,chroma*.52)*strength,.39,text);
+  if(variant==1){sent=VividSurface(hue,chroma,.55,text);selected=VividSurface(hue,chroma,.59,text);}
+  Color accent=Tone(hue,neutral?0:Clamp(chroma*.9,.075,.16),.77);accent=Readable(accent,selected,3,true);
+  string[] slots={Hex(window),Hex(Tone(hue,tint*.6,.215)),Hex(Tone(hue,tint*.4,.17)),Hex(Tone(hue,tint,.245)),Hex(Tone(hue,tint*.5,.16)),Hex(selected),Hex(sent),Hex(received)};
+  var profile=new SmartColors{Theme=Palette.Make("壁纸取色 · "+new[]{"均衡协调","鲜明点缀","安静中性"}[variant],LightSlots(hue,chroma,strength),slots),Accent=Hex(accent),Text=Hex(text),Icons=Hex(Tone(hue,neutral?0:.012,.9)),Border=Hex(Tone(hue,neutral?0:.025,.74)),Samples=swatches,Variant=variant,Seed=selectedSeed??Hex(Tone(hue,chroma,.65)),Description=neutral?"以中性灰建立层级，避免无彩色图片被强行染色。":"重点色用于选中项与发送气泡，接收气泡保留低彩度；避免整窗染成同一种颜色。",Effects=new EffectSettings{Brightness=100,Tint=0,Friends=(int)Clamp(25+mean*20+bright*15,27,58),Chat=0,Input=18},InputOpacity=(int)Clamp(25+mean*20,28,44)};return profile;
+ }
+ static Color VividSurface(double h,double c,double l,Color ink){Color result=Tone(h,c,l);for(int i=0;i<60&&Contrast(ink,result)<4.5;i++)result=Tone(h,c,l-=.005);return result;}
+ static Color VividLightSurface(double h,double c,double l,Color ink){Color result=Tone(h,c,l);for(int i=0;i<60&&Contrast(ink,result)<4.5;i++)result=Tone(h,c,l+=.005);return result;}
+ static string[] LightSlots(double hue,double chroma,double strength){Color ink=Tone(hue,.006,.2);return new[]{Hex(Tone(hue,chroma*.06,.95)),Hex(Tone(hue,chroma*.05,.97)),Hex(Tone(hue,chroma*.025,.985)),Hex(Tone(hue,chroma*.06,.94)),Hex(Tone(hue,chroma*.06,.91)),Hex(Tone(hue,Math.Min(.07,chroma*.4)*strength,.83)),Hex(Tone(hue,Math.Min(.05,chroma*.32)*strength,.9)),Hex(Tone(hue,chroma*.04,.965))};}
+ public static SmartColors Generate(string path,int variant,int runtimeMode){return Generate(path,variant,runtimeMode,null);}
+ public static SmartColors Generate(string path,int variant,int runtimeMode,string selectedSeed){if(runtimeMode!=0&&runtimeMode!=1)throw new ArgumentOutOfRangeException("runtimeMode");var p=GenerateSeed(path,variant,selectedSeed);p.RuntimeMode=runtimeMode;if(runtimeMode==0){var seed=ToOk(ColorTranslator.FromHtml(p.Seed));double h=seed.Hue,c=seed.C;p.Text=Hex(Tone(h,c<.01?0:.006,.2));p.Icons=Hex(Tone(h,c<.01?0:.014,.32));p.Accent=Hex(Tone(h,c<.01?0:Math.Min(.14,c),.43));p.Border=Hex(Tone(h,c<.01?0:.025,.5));p.InputOpacity=38;}if(variant==1&&runtimeMode==0){var vividSeed=ToOk(ColorTranslator.FromHtml(p.Seed));var ink=ColorTranslator.FromHtml(p.Text);p.Theme.Colors[12]=Hex(VividLightSurface(vividSeed.Hue,vividSeed.C,.78,ink));p.Theme.Colors[10]=Hex(VividLightSurface(vividSeed.Hue,vividSeed.C,.72,ink));}TuneMaterial(path,p);if(runtimeMode==0)ApplyLightHierarchy(p,new PaletteAssignment{Primary=p.Seed,Secondary=p.Seed,Neutral=p.Seed,Accent=p.Seed});p.InputOpacity=0;if(runtimeMode==1)p.Effects.Input=0;return p;}
+
+}
